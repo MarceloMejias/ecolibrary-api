@@ -30,9 +30,38 @@ addopts = [
     "-v",
 ]
 testpaths = ["books"]
+norecursedirs = [
+    ".venv",
+    "venv",
+    "env",
+    "site-packages",
+    "migrations",
+    "__pycache__",
+    "*.egg-info",
+]
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",
     "slow: Slow running tests",
 ]
 
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "*/migrations/*",
+    "manage.py",
+    "*/settings.py",
+    "*/wsgi.py",
+    "*/asgi.py",
+    "*/tests.py",
+    "*/test_*.py",
+    "*/__init__.py",
+    ".venv/*",
+    "venv/*",
+    "*/site-packages/*",
+    "*/.venv/*",
+]
+
+[tool.coverage.report]
+ignore_errors = true
+skip_empty = true
