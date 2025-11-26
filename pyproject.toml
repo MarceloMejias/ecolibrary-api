@@ -16,3 +16,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
 ]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "core_api.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
