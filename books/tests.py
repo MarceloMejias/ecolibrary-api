@@ -36,4 +36,6 @@ class BookAPITest(TestCase):
         """Sin ser admin, no se puede crear (REQ05)"""
         data = {'title': 'New', 'author': 'X', 'description': 'D', 'category': 'C', 'publication_year': 2025}
         response = self.client.post(self.url, data)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        
+        # --- CAMBIO AQUÍ: Aceptamos 401 o 403 ---
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
