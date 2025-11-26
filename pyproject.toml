@@ -13,10 +13,25 @@ dependencies = [
     "pysonar>=1.2.1.3951",
     "pytest>=9.0.1",
     "pytest-cov>=7.0.0",
+    "pytest-django>=4.11.1",
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
 ]
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "core_api.settings"
+DJANGO_SETTINGS_MODULE = "core.settings"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
+python_classes = ["Test*", "*Tests"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--reuse-db",
+    "-v",
+]
+testpaths = ["books"]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow running tests",
+]
