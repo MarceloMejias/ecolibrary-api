@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 # Copiamos uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
+# Creamos usuario no privilegiado para mayor seguridad
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
 # --- CAMBIO CRUCIAL ---
 # Creamos el entorno virtual en /opt/venv (fuera de /app)
 # Esto evita que el volumen de tu código local lo oculte o lo rompa
@@ -24,5 +27,11 @@ RUN uv sync --frozen --no-install-project
 
 COPY . .
 RUN uv sync --frozen
+
+# Cambiamos permisos de /app y /opt/venv al usuario no privilegiado
+RUN chown -R appuser:appuser /app /opt/venv
+
+# Cambiamos al usuario no privilegiado
+USER appuser
 
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
