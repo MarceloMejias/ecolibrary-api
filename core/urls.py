@@ -15,9 +15,18 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import include, path
 
 urlpatterns = [
+    # 1. Panel de Administración (REQ05)
     path('admin/', admin.site.urls),
+    
+    # 2. Rutas de la API REST (Backend) - REQ09
+    # Todas las URLs de la API empiezan con /api/books/
     path('api/books/', include('books.urls')),
+    
+    # 3. Rutas del Sitio Web (Frontend) - REQ03
+    # Usamos la cadena vacía '' para que atienda en la raíz (http://localhost:8000/)
+    # Es importante que esto vaya al final para no ocultar otras rutas.
+    path('', include('eco.urls')),
 ]

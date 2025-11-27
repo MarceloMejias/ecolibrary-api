@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container py-5">
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-4">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item">
+                {% if back_to == 'favorites' %}
+                    <a href="{% url 'favorites' %}" class="text-decoration-none">
+                        <i class="fas fa-heart me-1"></i>Favoritos
+                    </a>
+                {% else %}
+                    <a href="{% url 'index' %}" class="text-decoration-none">
+                        <i class="fas fa-book me-1"></i>Catálogo
+                    </a>
+                {% endif %}
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ book.title|truncatewords:5 }}</li>
+        </ol>
+    </nav>
+
+    <!-- Book Detail Card -->
+    <div class="card border-0 shadow-lg">
+        <div class="row g-0">
+            <!-- Book Cover -->
+            <div class="col-lg-4">
+                <div class="position-relative h-100 d-flex align-items-center justify-content-center p-4 overflow-hidden" style="{% if book.get_cover_url %}background: url('{{ book.get_cover_url }}'); background-size: cover; background-position: center;{% else %}background-color: #f8f9fa;{% endif %}">
+                    {% if book.get_cover_url %}
+                        <div class="position-absolute top-0 start-0 w-100 h-100" style="backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); background-color: rgba(0, 0, 0, 0.5);"></div>
+                        <img src="{{ book.get_cover_url }}" class="img-fluid rounded shadow" alt="{{ book.title }}" style="max-height: 600px; object-fit: contain; position: relative; z-index: 1;">
+                    {% else %}
+                        <div class="text-center text-muted">
+                            <i class="fas fa-book fa-5x mb-3 d-block"></i>
+                            <p class="fs-5">Sin portada disponible</p>
+                        </div>
+                    {% endif %}
+                    
+                    <!-- Favorite Badge -->
+                    {% if user.is_authenticated and is_favorite %}
+                        <span class="position-absolute top-0 end-0 m-3 rounded-circle d-flex align-items-center justify-content-center shadow" style="width: 48px; height: 48px; background-color: white; z-index: 2;">
+                            <i class="fas fa-heart text-danger fs-4"></i>
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Book Information -->
+            <div class="col-lg-8">
+                <div class="card-body p-4 p-lg-5">
+                    <!-- Title & Author -->
+                    <div class="mb-4">
+                        <h1 class="display-5 fw-bold mb-3">{{ book.title }}</h1>
+                        <p class="lead text-muted mb-0">
+                            <i class="fas fa-user-circle me-2"></i>{{ book.author }}
+                        </p>
+                    </div>
+
+                    <!-- Metadata -->
+                    <div class="row g-3 mb-4">
+                        <div class="col-sm-6">
+                            <div class="d-flex align-items-center p-3 bg-light rounded">
+                                <i class="fas fa-tag text-primary fs-4 me-3"></i>
+                                <div>
+                                    <small class="text-muted d-block">Categoría</small>
+                                    <strong>{{ book.category }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6">
+                            <div class="d-flex align-items-center p-3 bg-light rounded">
+                                <i class="fas fa-calendar text-primary fs-4 me-3"></i>
+                                <div>
+                                    <small class="text-muted d-block">Año de publicación</small>
+                                    <strong>{{ book.publication_year }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <div class="mb-4">
+                        <h5 class="fw-bold mb-3">
+                            <i class="fas fa-align-left me-2"></i>Descripción
+                        </h5>
+                        <p class="text-muted lh-lg">{{ book.description }}</p>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Actions -->
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if user.is_authenticated %}
+                            <a href="{% url 'toggle_favorite' book.id %}?from={{ back_to }}" 
+                               class="btn {% if is_favorite %}btn-danger{% else %}btn-outline-danger{% endif %} btn-lg">
+                                <i class="{% if is_favorite %}fas{% else %}far{% endif %} fa-heart me-2"></i>
+                                {% if is_favorite %}En Favoritos{% else %}Agregar a Favoritos{% endif %}
+                            </a>
+                        {% else %}
+                            <a href="{% url 'login' %}" class="btn btn-outline-secondary btn-lg">
+                                <i class="fas fa-lock me-2"></i>Inicia sesión para agregar a favoritos
+                            </a>
+                        {% endif %}
+                        
+                        {% if back_to == 'favorites' %}
+                            <a href="{% url 'favorites' %}" class="btn btn-outline-primary btn-lg">
+                                <i class="fas fa-arrow-left me-2"></i>Volver a Favoritos
+                            </a>
+                        {% else %}
+                            <a href="{% url 'index' %}" class="btn btn-outline-primary btn-lg">
+                                <i class="fas fa-arrow-left me-2"></i>Volver al Catálogo
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

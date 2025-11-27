@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white text-center py-3">
+                <h4 class="mb-0">Crear Cuenta</h4>
+            </div>
+            <div class="card-body p-4">
+                <p class="text-muted text-center mb-4">
+                    Únete a EcoLibrary para gestionar tus libros favoritos.
+                </p>
+
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        {{ form.as_p }}
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-success">Registrarse</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card-footer text-center bg-light">
+                <small class="text-muted">
+                    ¿Ya tienes cuenta? <a href="{% url 'login' %}" class="text-decoration-none text-success">Inicia sesión</a>
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
