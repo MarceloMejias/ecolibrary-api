@@ -94,337 +94,365 @@ class Book(models.Model):
             bool: True si se encontró y actualizó la información, False en caso contrario.
         """
         try:
-            # Si tenemos external_id, buscar directamente
             if self.external_id:
-                work_data = None
-                edition_data = None
-                
-                # Detectar si es un Edition ID (libro) o Work ID
-                is_edition = 'M' in self.external_id.upper()
-                is_work = 'W' in self.external_id.upper()
-                
-                print(f"DEBUG: Procesando external_id: {self.external_id} (Edition: {is_edition}, Work: {is_work})")
-                
-                # Si es una edición (book), obtener el work asociado
-                if is_edition:
-                    try:
-                        # Limpiar y formatear el ID de edición
-                        clean_id = self.external_id.replace("OL", "").replace("M", "")
-                        edition_url = f"https://openlibrary.org/books/OL{clean_id}M.json"
-                        
-                        edition_response = requests.get(edition_url, timeout=5)
-                        if edition_response.status_code == 200:
-                            edition_data = edition_response.json()
-                            print(f"DEBUG: Edición obtenida: {edition_data.get('title')}")
-                            
-                            # Obtener el work key de la edición
-                            works = edition_data.get('works', [])
-                            if works and len(works) > 0:
-                                work_key = works[0].get('key', '')
-                                if work_key:
-                                    work_url = f"https://openlibrary.org{work_key}.json"
-                                    work_response = requests.get(work_url, timeout=5)
-                                    if work_response.status_code == 200:
-                                        work_data = work_response.json()
-                                        print(f"DEBUG: Work obtenido desde edición: {work_data.get('title')}")
-                    except Exception as e:
-                        print(f"Error obteniendo edición: {e}")
-                
-                # Si es un work o no pudimos obtener datos de la edición
-                if is_work or not work_data:
-                    try:
-                        # Limpiar el external_id de prefijos si los tiene
-                        clean_id = self.external_id.replace("OL", "").replace("W", "")
-                        work_url = f"https://openlibrary.org/works/OL{clean_id}W.json"
-                        
-                        response = requests.get(work_url, timeout=5)
-                        response.raise_for_status()
-                        work_data = response.json()
-                    except Exception:
-                        # Si falla con formato OL###W, intentar con el ID tal cual
-                        try:
-                            work_url = f"https://openlibrary.org/works/{self.external_id}.json"
-                            response = requests.get(work_url, timeout=5)
-                            response.raise_for_status()
-                            work_data = response.json()
-                        except Exception as e:
-                            print(f"Error obteniendo work: {e}")
-                
-                # Procesar datos del work si existen
-                if work_data:
-                    
-                    print("DEBUG: Work data obtenida")
-                    print(f"  - Título en API: {work_data.get('title', 'N/A')}")
-                    print(f"  - Descripción existe: {bool(work_data.get('description'))}")
-                    print(f"  - Subjects: {len(work_data.get('subjects', []))} encontrados")
-                    print(f"  - Covers: {len(work_data.get('covers', []))} encontradas")
-                    
-                    # Actualizar título (priorizar work, luego edition)
-                    if not self.title or self.title == "" or self.title == "Sin título":
-                        self.title = work_data.get("title") or (edition_data.get("title") if edition_data else None) or "Sin título"
-                        print(f"  ✓ Título actualizado: {self.title}")
-                    
-                    # Obtener autores
-                    if "authors" in work_data and work_data["authors"]:
-                        author_keys = []
-                        for author_ref in work_data["authors"]:
-                            if isinstance(author_ref, dict) and "author" in author_ref:
-                                key = author_ref["author"].get("key", "")
-                                if key:
-                                    author_keys.append(key)
-                        
-                        authors = []
-                        for key in author_keys[:3]:  # Máximo 3 autores
-                            try:
-                                author_url = f"https://openlibrary.org{key}.json"
-                                author_response = requests.get(author_url, timeout=3)
-                                if author_response.status_code == 200:
-                                    author_data = author_response.json()
-                                    name = author_data.get("name", "")
-                                    if name:
-                                        authors.append(name)
-                            except Exception:
-                                continue
-                        
-                        if authors and (not self.author or self.author == "" or self.author == "Autor desconocido"):
-                            self.author = ", ".join(authors)
-                            print(f"  ✓ Autor(es) actualizado: {self.author}")
-                    
-                    # Descripción
-                    if not self.description or self.description == "" or self.description == "Sin descripción disponible":
-                        description = work_data.get("description")
-                        if description:
-                            if isinstance(description, dict):
-                                desc_value = description.get("value", "")
-                                if desc_value:
-                                    self.description = desc_value
-                                    print(f"  ✓ Descripción actualizada (dict): {len(self.description)} caracteres")
-                            elif isinstance(description, str):
-                                self.description = description
-                                print(f"  ✓ Descripción actualizada (str): {len(self.description)} caracteres")
-                    
-                    # Si no hay descripción del work, intentar obtener de la primera edición
-                    if not self.description or self.description == "Sin descripción disponible":
-                        # Si ya tenemos edition_data, usarla
-                        if edition_data:
-                            ed_desc = edition_data.get("description")
-                            if ed_desc:
-                                if isinstance(ed_desc, dict):
-                                    self.description = ed_desc.get("value", self.description)
-                                else:
-                                    self.description = ed_desc
-                        else:
-                            # Buscar ediciones si no tenemos edition_data
-                            try:
-                                work_id = work_data.get('key', '').split('/')[-1]
-                                editions_url = f"https://openlibrary.org/works/{work_id}/editions.json"
-                                editions_response = requests.get(editions_url, params={"limit": 1}, timeout=3)
-                                if editions_response.status_code == 200:
-                                    editions_data = editions_response.json()
-                                    entries = editions_data.get("entries", [])
-                                    if entries:
-                                        first_edition = entries[0]
-                                        ed_desc = first_edition.get("description")
-                                        if ed_desc:
-                                            if isinstance(ed_desc, dict):
-                                                self.description = ed_desc.get("value", self.description)
-                                            else:
-                                                self.description = ed_desc
-                                        elif "notes" in first_edition:
-                                            notes = first_edition.get("notes")
-                                            if isinstance(notes, dict):
-                                                self.description = notes.get("value", self.description)
-                                            elif isinstance(notes, str):
-                                                self.description = notes
-                            except Exception:
-                                pass
-                    
-                    # Categorías/Subjects - intentar de múltiples fuentes
-                    if not self.category or self.category == "" or self.category == "General":
-                        subjects = work_data.get("subjects", [])
-                        
-                        # Si no hay subjects en el work, intentar de la edición
-                        if not subjects and edition_data:
-                            subjects = edition_data.get("subjects", [])
-                        
-                        if subjects:
-                            self.category = ", ".join(subjects[:2])
-                            print(f"  ✓ Categoría actualizada: {self.category}")
-                        else:
-                            # Si no hay subjects, intentar usar subject_places o dejar como "Sin categoría"
-                            subject_places = work_data.get("subject_places", [])
-                            if subject_places:
-                                self.category = ", ".join(subject_places[:2])
-                                print(f"  ✓ Categoría actualizada (places): {self.category}")
-                    
-                    # Año de primera publicación
-                    if not self.publication_year or self.publication_year == 2000:
-                        import re
-                        
-                        # Priorizar la fecha de la edición si la tenemos
-                        if edition_data and edition_data.get("publish_date"):
-                            pub_date = edition_data.get("publish_date")
-                            year_match = re.search(r'\d{4}', str(pub_date))
-                            if year_match:
-                                self.publication_year = int(year_match.group())
-                                print(f"  ✓ Año actualizado (de edición): {self.publication_year}")
-                        
-                        # Si no, buscar la fecha de la PRIMERA edición (más antigua)
-                        if not self.publication_year or self.publication_year == 2000:
-                            try:
-                                work_id = work_data.get('key', '').split('/')[-1]
-                                if not work_id.startswith('OL'):
-                                    work_id = f"OL{work_id}"
-                                if not work_id.endswith('W'):
-                                    work_id = f"{work_id}W"
-                                
-                                # Obtener todas las ediciones para buscar la más antigua
-                                editions_url = f"https://openlibrary.org/works/{work_id}/editions.json"
-                                editions_response = requests.get(editions_url, params={"limit": 50}, timeout=3)
-                                if editions_response.status_code == 200:
-                                    editions_data = editions_response.json()
-                                    entries = editions_data.get("entries", [])
-                                    
-                                    # Buscar el año más antiguo
-                                    oldest_year = None
-                                    for edition in entries:
-                                        pub_date = edition.get("publish_date")
-                                        if pub_date:
-                                            year_match = re.search(r'\d{4}', str(pub_date))
-                                            if year_match:
-                                                year = int(year_match.group())
-                                                if oldest_year is None or year < oldest_year:
-                                                    oldest_year = year
-                                    
-                                    if oldest_year:
-                                        self.publication_year = oldest_year
-                                        print(f"  ✓ Año actualizado (primera edición): {self.publication_year}")
-                            except Exception as e:
-                                print(f"Error obteniendo año: {e}")
-                    
-                    # Portada - priorizar edición MÁS RECIENTE
-                    if not self.cover_url or self.cover_url == "":
-                        cover_found = False
-                        
-                        # Primero intentar de la edición actual si la tenemos
-                        if edition_data:
-                            covers = edition_data.get("covers", [])
-                            valid_covers = [c for c in covers if c and c > 0]
-                            if valid_covers:
-                                self.cover_url = f"https://covers.openlibrary.org/b/id/{valid_covers[0]}-L.jpg"
-                                print(f"  ✓ Portada actualizada (de edición actual): {self.cover_url}")
-                                cover_found = True
-                        
-                        # Si no, buscar en las ediciones más recientes del work
-                        if not cover_found:
-                            try:
-                                work_id = work_data.get('key', '').split('/')[-1]
-                                if not work_id.startswith('OL'):
-                                    work_id = f"OL{work_id}"
-                                if not work_id.endswith('W'):
-                                    work_id = f"{work_id}W"
-                                
-                                # Obtener ediciones para buscar las más recientes con portada
-                                editions_url = f"https://openlibrary.org/works/{work_id}/editions.json"
-                                editions_response = requests.get(editions_url, params={"limit": 50}, timeout=3)
-                                if editions_response.status_code == 200:
-                                    editions_data = editions_response.json()
-                                    entries = editions_data.get("entries", [])
-                                    
-                                    # Ordenar ediciones por año de publicación (más reciente primero)
-                                    import re
-                                    editions_with_year = []
-                                    for edition in entries:
-                                        pub_date = edition.get("publish_date")
-                                        year = None
-                                        if pub_date:
-                                            year_match = re.search(r'\d{4}', str(pub_date))
-                                            if year_match:
-                                                year = int(year_match.group())
-                                        
-                                        ed_covers = edition.get("covers", [])
-                                        valid_ed_covers = [c for c in ed_covers if c and c > 0]
-                                        
-                                        if valid_ed_covers:
-                                            editions_with_year.append({
-                                                'year': year or 0,
-                                                'cover_id': valid_ed_covers[0]
-                                            })
-                                    
-                                    # Ordenar por año descendente y tomar la más reciente
-                                    if editions_with_year:
-                                        editions_with_year.sort(key=lambda x: x['year'], reverse=True)
-                                        newest = editions_with_year[0]
-                                        self.cover_url = f"https://covers.openlibrary.org/b/id/{newest['cover_id']}-L.jpg"
-                                        print(f"  ✓ Portada actualizada (edición más reciente, año {newest['year']}): {self.cover_url}")
-                                        cover_found = True
-                            except Exception as e:
-                                print(f"Error obteniendo portada de ediciones: {e}")
-                        
-                        # Como último recurso, usar la portada del work
-                        if not cover_found:
-                            covers = work_data.get("covers", [])
-                            valid_covers = [c for c in covers if c and c > 0]
-                            if valid_covers:
-                                self.cover_url = f"https://covers.openlibrary.org/b/id/{valid_covers[0]}-L.jpg"
-                                print(f"  ✓ Portada actualizada (de work): {self.cover_url}")
-                    
-                    print("DEBUG: Fetch completado exitosamente")
-                    return True
-            
-            # Si no hay external_id, buscar por título
-            if self.title and self.title != "Sin título":
-                search_url = "https://openlibrary.org/search.json"
-                response = requests.get(
-                    search_url,
-                    params={"title": self.title, "limit": 1},
-                    timeout=5
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    docs = data.get("docs", [])
-                    
-                    if docs:
-                        book = docs[0]
-                        
-                        # Actualizar external_id
-                        work_key = book.get("key", "")
-                        if work_key:
-                            self.external_id = work_key.split("/")[-1]
-                        
-                        # Autores
-                        authors = book.get("author_name", [])
-                        if authors:
-                            self.author = ", ".join(authors[:3])
-                        
-                        # Año de publicación
-                        year = book.get("first_publish_year")
-                        if year:
-                            self.publication_year = year
-                        
-                        # Categorías
-                        subjects = book.get("subject", [])
-                        if subjects:
-                            self.category = ", ".join(subjects[:2])
-                        
-                        # Portada
-                        cover_id = book.get("cover_i")
-                        if cover_id:
-                            self.cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
-                        
-                        # Ahora que tenemos el external_id, llamar recursivamente para obtener descripción
-                        if self.external_id:
-                            return self.fetch_book_data_from_openlibrary()
-                        
-                        return True
-            
+                return self._fetch_by_external_id()
+            elif self.title and self.title != "Sin título":
+                return self._fetch_by_title()
             return False
-            
         except Exception as e:
-            # Log del error para debugging
             print(f"Error fetching from OpenLibrary: {e}")
             return False
+
+    def _fetch_by_external_id(self):
+        """Obtiene datos usando external_id."""
+        work_data, edition_data = self._get_work_and_edition_data()
+        
+        if not work_data:
+            return False
+        
+        self._update_from_work_data(work_data, edition_data)
+        return True
+
+    def _fetch_by_title(self):
+        """Obtiene datos buscando por título."""
+        response = requests.get(
+            "https://openlibrary.org/search.json",
+            params={"title": self.title, "limit": 1},
+            timeout=5
+        )
+        
+        if response.status_code != 200:
+            return False
+        
+        docs = response.json().get("docs", [])
+        if not docs:
+            return False
+        
+        book = docs[0]
+        self._update_from_search_result(book)
+        
+        if self.external_id:
+            return self.fetch_book_data_from_openlibrary()
+        return True
+
+    def _get_work_and_edition_data(self):
+        """Obtiene datos de work y edition desde Open Library."""
+        is_edition = 'M' in self.external_id.upper()
+        work_data = None
+        edition_data = None
+        
+        if is_edition:
+            edition_data = self._fetch_edition_data()
+            if edition_data:
+                work_data = self._fetch_work_from_edition(edition_data)
+        
+        if not work_data:
+            work_data = self._fetch_work_data()
+        
+        return work_data, edition_data
+
+    def _fetch_edition_data(self):
+        """Obtiene datos de una edición específica."""
+        try:
+            clean_id = self.external_id.replace("OL", "").replace("M", "")
+            url = f"https://openlibrary.org/books/OL{clean_id}M.json"
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            print(f"Error obteniendo edición: {e}")
+        return None
+
+    def _fetch_work_from_edition(self, edition_data):
+        """Obtiene el work asociado a una edición."""
+        try:
+            works = edition_data.get('works', [])
+            if works:
+                work_key = works[0].get('key', '')
+                if work_key:
+                    url = f"https://openlibrary.org{work_key}.json"
+                    response = requests.get(url, timeout=5)
+                    if response.status_code == 200:
+                        return response.json()
+        except Exception as e:
+            print(f"Error obteniendo work desde edición: {e}")
+        return None
+
+    def _fetch_work_data(self):
+        """Obtiene datos de un work directamente."""
+        try:
+            clean_id = self.external_id.replace("OL", "").replace("W", "")
+            url = f"https://openlibrary.org/works/OL{clean_id}W.json"
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            return response.json()
+        except Exception:
+            try:
+                url = f"https://openlibrary.org/works/{self.external_id}.json"
+                response = requests.get(url, timeout=5)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                print(f"Error obteniendo work: {e}")
+        return None
+
+    def _update_from_work_data(self, work_data, edition_data):
+        """Actualiza los campos del modelo desde los datos obtenidos."""
+        self._update_title(work_data, edition_data)
+        self._update_author(work_data)
+        self._update_description(work_data, edition_data)
+        self._update_category(work_data, edition_data)
+        self._update_publication_year(work_data, edition_data)
+        self._update_cover_url(work_data, edition_data)
+
+    def _update_title(self, work_data, edition_data):
+        """Actualiza el título del libro."""
+        if self.title and self.title != "" and self.title != "Sin título":
+            return
+        
+        title = work_data.get("title")
+        if not title and edition_data:
+            title = edition_data.get("title")
+        
+        self.title = title or "Sin título"
+
+    def _update_author(self, work_data):
+        """Actualiza el autor del libro."""
+        if self.author and self.author != "" and self.author != "Autor desconocido":
+            return
+        
+        authors = work_data.get("authors", [])
+        if not authors:
+            return
+        
+        author_names = []
+        for author_ref in authors[:3]:
+            if isinstance(author_ref, dict) and "author" in author_ref:
+                key = author_ref["author"].get("key", "")
+                if key:
+                    name = self._fetch_author_name(key)
+                    if name:
+                        author_names.append(name)
+        
+        if author_names:
+            self.author = ", ".join(author_names)
+
+    def _fetch_author_name(self, author_key):
+        """Obtiene el nombre de un autor desde su key."""
+        try:
+            url = f"https://openlibrary.org{author_key}.json"
+            response = requests.get(url, timeout=3)
+            if response.status_code == 200:
+                return response.json().get("name", "")
+        except Exception:
+            pass
+        return None
+
+    def _update_description(self, work_data, edition_data):
+        """Actualiza la descripción del libro."""
+        if self.description and self.description != "" and self.description != "Sin descripción disponible":
+            return
+        
+        description = self._extract_description(work_data.get("description"))
+        
+        if not description and edition_data:
+            description = self._extract_description(edition_data.get("description"))
+        
+        if not description:
+            description = self._fetch_description_from_editions(work_data)
+        
+        if description:
+            self.description = description
+
+    def _extract_description(self, description):
+        """Extrae el texto de descripción desde diferentes formatos."""
+        if not description:
+            return None
+        
+        if isinstance(description, dict):
+            return description.get("value", "")
+        elif isinstance(description, str):
+            return description
+        return None
+
+    def _fetch_description_from_editions(self, work_data):
+        """Busca descripción en las ediciones del work."""
+        try:
+            work_id = work_data.get('key', '').split('/')[-1]
+            url = f"https://openlibrary.org/works/{work_id}/editions.json"
+            response = requests.get(url, params={"limit": 1}, timeout=3)
+            
+            if response.status_code == 200:
+                entries = response.json().get("entries", [])
+                if entries:
+                    first_edition = entries[0]
+                    desc = self._extract_description(first_edition.get("description"))
+                    if desc:
+                        return desc
+                    return self._extract_description(first_edition.get("notes"))
+        except Exception:
+            pass
+        return None
+
+    def _update_category(self, work_data, edition_data):
+        """Actualiza la categoría del libro."""
+        if self.category and self.category != "" and self.category != "General":
+            return
+        
+        subjects = work_data.get("subjects", [])
+        
+        if not subjects and edition_data:
+            subjects = edition_data.get("subjects", [])
+        
+        if subjects:
+            self.category = ", ".join(subjects[:2])
+        else:
+            subject_places = work_data.get("subject_places", [])
+            if subject_places:
+                self.category = ", ".join(subject_places[:2])
+
+    def _update_publication_year(self, work_data, edition_data):
+        """Actualiza el año de publicación."""
+        if self.publication_year and self.publication_year != 2000:
+            return
+        
+        year = self._extract_year_from_edition(edition_data)
+        
+        if not year:
+            year = self._fetch_oldest_year(work_data)
+        
+        if year:
+            self.publication_year = year
+
+    def _extract_year_from_edition(self, edition_data):
+        """Extrae el año de publicación de una edición."""
+        import re
+        
+        if not edition_data:
+            return None
+        
+        pub_date = edition_data.get("publish_date")
+        if pub_date:
+            year_match = re.search(r'\d{4}', str(pub_date))
+            if year_match:
+                return int(year_match.group())
+        return None
+
+    def _fetch_oldest_year(self, work_data):
+        """Busca el año de la edición más antigua."""
+        import re
+        
+        try:
+            work_id = self._normalize_work_id(work_data.get('key', '').split('/')[-1])
+            url = f"https://openlibrary.org/works/{work_id}/editions.json"
+            response = requests.get(url, params={"limit": 50}, timeout=3)
+            
+            if response.status_code == 200:
+                entries = response.json().get("entries", [])
+                oldest_year = None
+                
+                for edition in entries:
+                    pub_date = edition.get("publish_date")
+                    if pub_date:
+                        year_match = re.search(r'\d{4}', str(pub_date))
+                        if year_match:
+                            year = int(year_match.group())
+                            if oldest_year is None or year < oldest_year:
+                                oldest_year = year
+                
+                return oldest_year
+        except Exception as e:
+            print(f"Error obteniendo año: {e}")
+        return None
+
+    def _update_cover_url(self, work_data, edition_data):
+        """Actualiza la URL de portada."""
+        if self.cover_url and self.cover_url != "":
+            return
+        
+        cover_id = self._get_cover_from_edition(edition_data)
+        
+        if not cover_id:
+            cover_id = self._fetch_newest_cover(work_data)
+        
+        if not cover_id:
+            cover_id = self._get_cover_from_work(work_data)
+        
+        if cover_id:
+            self.cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
+
+    def _get_cover_from_edition(self, edition_data):
+        """Obtiene cover ID de una edición."""
+        if not edition_data:
+            return None
+        
+        covers = edition_data.get("covers", [])
+        valid_covers = [c for c in covers if c and c > 0]
+        return valid_covers[0] if valid_covers else None
+
+    def _get_cover_from_work(self, work_data):
+        """Obtiene cover ID del work."""
+        covers = work_data.get("covers", [])
+        valid_covers = [c for c in covers if c and c > 0]
+        return valid_covers[0] if valid_covers else None
+
+    def _fetch_newest_cover(self, work_data):
+        """Busca la portada de la edición más reciente."""
+        import re
+        
+        try:
+            work_id = self._normalize_work_id(work_data.get('key', '').split('/')[-1])
+            url = f"https://openlibrary.org/works/{work_id}/editions.json"
+            response = requests.get(url, params={"limit": 50}, timeout=3)
+            
+            if response.status_code == 200:
+                entries = response.json().get("entries", [])
+                editions_with_covers = []
+                
+                for edition in entries:
+                    year = self._extract_year_from_edition(edition)
+                    cover_id = self._get_cover_from_edition(edition)
+                    
+                    if cover_id:
+                        editions_with_covers.append({'year': year or 0, 'cover_id': cover_id})
+                
+                if editions_with_covers:
+                    editions_with_covers.sort(key=lambda x: x['year'], reverse=True)
+                    return editions_with_covers[0]['cover_id']
+        except Exception as e:
+            print(f"Error obteniendo portada de ediciones: {e}")
+        return None
+
+    def _normalize_work_id(self, work_id):
+        """Normaliza el work ID al formato OL###W."""
+        if not work_id.startswith('OL'):
+            work_id = f"OL{work_id}"
+        if not work_id.endswith('W'):
+            work_id = f"{work_id}W"
+        return work_id
+
+    def _update_from_search_result(self, book):
+        """Actualiza campos desde resultado de búsqueda."""
+        work_key = book.get("key", "")
+        if work_key:
+            self.external_id = work_key.split("/")[-1]
+        
+        authors = book.get("author_name", [])
+        if authors:
+            self.author = ", ".join(authors[:3])
+        
+        year = book.get("first_publish_year")
+        if year:
+            self.publication_year = year
+        
+        subjects = book.get("subject", [])
+        if subjects:
+            self.category = ", ".join(subjects[:2])
+        
+        cover_id = book.get("cover_i")
+        if cover_id:
+            self.cover_url = f"https://covers.openlibrary.org/b/id/{cover_id}-L.jpg"
 
     def save(self, *args, **kwargs):
         """
