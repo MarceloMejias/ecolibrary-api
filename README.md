@@ -1,5 +1,4 @@
-# EcoLibrary
-
+![#Ecolibrary](banner.png)
 Sistema de gestión de biblioteca digital con integración a Open Library API. Proyecto monolítico Django con frontend web y API REST.
 
 ## Características
@@ -37,7 +36,6 @@ cd ecolibrary-base
 ### 2. Instalar dependencias
 
 ```bash
-cd core_api
 uv sync
 ```
 
